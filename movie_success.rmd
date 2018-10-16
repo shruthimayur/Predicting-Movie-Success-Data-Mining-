@@ -1,0 +1,311 @@
+---
+title: "COEN281 Project - Predicting Movie Success"
+subtitle: Pattern Recognition and Data Mining Project Summer 2017
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+_Note: This project involves getting data ready for analysis and doing some preliminary investigations, it would further involve modeling and predictions, and will be released at a later date. 
+
+# Data
+
+In this project, you will explore a dataset that contains information about movies, including actor names, actors' popularity, ratings, budget, gross revenue and other attributes.
+
+> The file [`movie_metadata.csv`] contains a dataframe with the same name that has 5043 rows and 28 columns. Each row represents a movie title and each column represents a descriptor such as `Title`, `Actors`, and `Budget`. We have collected the data from Kaggle.
+
+# Objective
+
+Our goal is to investigate the relationship between the movie descriptors and the box office success of movies, as represented by the variable `Gross`. This task is extremely important as it can help the production companies decide how much to bid on produced movies, when to release a title, how much to invest in marketing and PR, etc. This information is most useful before a title is released, but it is still very valuable after the movie is already released for the public too
+
+# Instructions
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. Open this file in RStudio to get started.
+
+When you execute code within the notebook, the results appear beneath the code. Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+x = 1:25
+print(mean(x))
+```
+
+Plots appear inline too:
+```{r}
+plot(x, x/2, 'o')
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
+
+# Setup
+
+## Load data
+
+Make sure you've placed the "movies_metadata.csv" file in the same directory as that of the rmd files. We should now read the ".csv" file as follows and store it as a data frame
+
+```{r}
+df = read.csv("movie_metadata.csv")
+df
+class(df)
+summary(df)
+```
+
+This creates an object of the same name (`movies_merged`). For convenience, you can copy it to `df` and start using it:
+
+```{r}
+cat("Dataset has", dim(df)[1], "rows and", dim(df)[2], "columns", end="\n", file="")
+colnames(df)
+```
+
+## Load R packages
+
+Load any R packages that you will need to use.We will need to install it before loading it for our usage using 'install.packages'
+
+```{r}
+library(ggplot2)
+library(tm)
+library(caTools)
+library(dplyr)
+```
+#Specify additional packages
+
+#Data Preprocessing
+
+#Sort the data in the increasing order of their 'title_year'
+```{r}
+df <- df[order(df$title_year),]
+df
+```
+## We are creating break points in the years considered and assigning each of them with a representative values to evaluate the number of movies in that interval.
+
+```{r}
+# TODO: Investigate the distribution of Runtime values and how it varies by Year and Budget
+bin_boundaries = c("1910","1920","1930","1940","1950","1960","1970","1980","1990","2000","2010","2020")
+bin_values = c("1915","1925","1935","1945","1955","1965","1975","1985","1995","2005","2015")
+c = cut(df$title_year,breaks = bin_boundaries, labels = bin_values)
+
+table(c)
+
+```
+
+
+
+_Feel free to insert additional code chunks as necessary._
+```{r}
+#Plot to illustrate the relationship between duration and years.
+qplot(c,df$duration,
+      main = "Distribution of Duration over years",
+      xlab = "title_year",
+      ylab = "duration")
+```
+```{r}
+#Plot to illustrate the relationship between duration and budget.
+qplot(df$duration, df$budget, size = I(1),
+      main = "Relationship between budget and runtime",
+      xlab = "duration",
+      ylab = "budget") +
+  stat_smooth(color = "red", size = I(1.2), se = F)
+
+```
+
+##Exclude movies released prior to 2000
+Several factors like finance, marketing, technology, etc differ when it comes to movies that were released in the recent years when compared to the ones that were released earlier. So we exclude all the movies released prior to 2000
+
+```{r}
+#df <- df[(df$title_year >=2000),]
+```
+
+##Drop rows with missing values
+Rows that do not contain some of the values corresponding to important descriptors should be dropped
+
+```{r}
+df <- df[complete.cases(df$gross),]
+df <- df[complete.cases(df$budget),]
+df <- df[complete.cases(df$title_year),]
+df <- df[complete.cases(df$duration),]
+```
+
+## Explore Gross revenue
+
+For the commercial success of a movie, production houses want to maximize Gross revenue. Investigate if Gross revenue is related to Budget, Runtime or Genre in any way.
+
+Note: To get a meaningful relationship, you may have to partition the movies into subsets such as short vs. long duration etc.
+
+```{r}
+# TODO: Investigate if Gross Revenue is related to Budget, Runtime or Genre
+ShortRuntime = numeric()
+LongRuntime = numeric()
+for(i in 1:nrow(df)){
+  if (is.logical(df[i,]$duration <= 80)){
+    ShortRuntime = c(ShortRuntime, i)
+  }
+  if (is.logical(df[i,]$duration > 80)){
+    LongRuntime = c(LongRuntime,i)
+  }
+}
+dfSubset.ShortRuntime = df[ShortRuntime,]
+dfSubset.LongRuntime = df[LongRuntime,]
+
+qplot(dfSubset.ShortRuntime$duration, dfSubset.ShortRuntime$gross,log = "xy", xlab = "duration", ylab = "gross",main = "Short Runtime versus Gross Revenue")
+qplot(dfSubset.LongRuntime$duration, dfSubset.LongRuntime$gross,log = "xy", xlab = "duration", ylab = "gross",main = "Long Runtime versus Gross Revenue")
+qplot(dfSubset.ShortRuntime$budget, dfSubset.ShortRuntime$gross,log = "xy", xlab = "budget", ylab = "gross",main = "Budget versus Gross Revenue in Short Movies")
+qplot(dfSubset.LongRuntime$budget, dfSubset.LongRuntime$gross,log = "xy", xlab = "budget", ylab = "gross",main = "Budget versus Gross Revenue in Long Movies")
+```
+
+
+## Comparing the Gross revenue with the IMDB rating
+
+We now investigate the pairwise relationships between these different descriptors using graphs i.e. the gross revenue and the imdb rating
+
+```{r}
+# TODO: Illustrate how ratings from IMDb and Rotten Tomatoes are related
+qplot(df$imdb_score, df$gross, xlab = "Imdb Rating", ylab = "Gross Revenue", main = "Imdb versus Gross Revenue")
+```
+
+## Comparing the year and the IMDB rating
+
+Investigating the correlation between the year the movie has released and the IMDB rating it has received.
+
+```{r}
+year_ratings = cut(df$title_year,breaks = bin_boundaries, labels = bin_values)
+qplot(year_ratings, df$imdb_score, xlab = "title_year",ylab = "imdb_score", main = "Imdb Ratings over several decades")
+```
+
+## Final preprocessed dataset
+
+Report the dimensions of the preprocessed dataset you will be using for modeling and evaluation, and print all the final column names. (Again, `Domestic_Gross` should not be in this list!)
+
+```{r}
+# TODO: Print the dimensions of the final preprocessed dataset and column names
+cat("Dataset now has", dim(df)[1], "rows and", dim(df)[2], "columns", end="\n", file="")
+colnames(df)
+```
+
+# Splitting the dataset into the Training set and Test set
+# install.packages('caTools')
+```{r}
+
+set.seed(123)
+df_new <- df
+
+split = sample.split(df_new$gross, SplitRatio = 2/3)
+train_set = subset(df_new, split == TRUE)
+test_set = subset(df_new, split == FALSE)
+```
+
+
+#Fitting Simple Linear Regression to the traning set
+```{r}
+linear_reg = lm(formula = gross ~ budget,
+                data = train_set)
+summary(linear_reg)
+```
+
+
+#Predicting the test set results
+```{r}
+predictor = predict(linear_reg, newdata = test_set)
+summary(predictor)
+```
+
+
+#Plot and Visualize the training set results
+```{r}
+library(ggplot2)
+ggplot() +
+  geom_point(aes(x = train_set$budget, y = train_set$gross), colour = 'red') +
+  geom_line(aes(x = train_set$budget, y = predict(linear_reg, newdata = train_set)), colour = 'blue') +
+  ggtitle('Gross revenue vs Budget (Training Set)') +
+  xlab('Budget') +
+  ylab('Gross')
+```
+
+
+#Plot and Visualize the test set results
+```{r}
+library(ggplot2)
+ggplot() +
+  geom_point(aes(x = test_set$budget, y = test_set$gross), colour = 'red') +
+  geom_line(aes(x = train_set$budget, y = predict(linear_reg, newdata = train_set)), colour = 'blue') +
+  ggtitle('Gross revenue vs Budget (Test Set)') +
+  xlab('Budget') +
+  ylab('Gross')
+```
+
+
+# Evaluation Strategy
+
+In each of the tasks described in the next section, you will build a regression model. In order to compare their performance, use the following evaluation procedure every time:
+
+1. Randomly divide the rows into two sets of sizes 5% and 95%.
+2. Use the first set for training and the second for testing.
+3. Compute the Root Mean Squared Error (RMSE) on the train and test sets.
+4. Repeat the above data partition and model training and evaluation 10 times and average the RMSE results so the results stabilize.
+5. Repeat the above steps for different proportions of train and test sizes: 10%-90%, 15%-85%, ..., 95%-5% (total 19 splits including the initial 5%-95%).
+6. Generate a graph of the averaged train and test RMSE as a function of the train set size (%).
+
+## 1. Numeric variables
+
+Use linear regression to predict `Gross` based on all available _numeric_ variables.
+
+```{r}
+### Code for running 5 % of training data is provided only.
+smp_size <- floor(0.95 * nrow(df))
+train_ind <- sample(dim(df)[1], size = smp_size)
+train <- df[train_ind, ]
+test <- df[-train_ind, ]
+
+
+M1 = lm(gross ~ duration + budget + imdb_score + cast_total_facebook_likes + director_facebook_likes + movie_facebook_likes,
+        data = train)
+
+summary(M1)
+P1 = predict(M1,train)
+P2 = predict(M1, test)
+
+rmse <- function(label1, label2)
+{
+  return(sqrt(mean((label1-label2)^2)))
+
+}
+rmse(P1,train$gross)
+rmse(P2,test$gross)
+```
+
+
+
+```{r}
+train_size = seq(5,95, by = 5)
+train_rmse = c(59701490,60235667,66696641,62297145,58348643,
+60113167,66244900,63243252,57982507,60325695,59433768,
+61029943,62024075,59663559,64248333,62495795,62082024,62262118,
+63076064)
+test_rmse = c(74350241,63659442,61897083,62919659,65948475,
+63958936,60414378,71720877,73842106,79774334,66026766,70044953,
+71140669,68305764,56106732,61592438,63511146,62641849,
+44457204)
+
+d1 = data.frame(size = train_size, train = train_rmse, test = test_rmse)
+ggplot(d1, aes(size)) + 
+  geom_line(aes(size,train,color = "Train RMSE"))+
+  geom_line(aes(size,test,color = "Test RMSE"))+
+  ggtitle("Train and Test RMSE")+
+  labs(x = "Training Size", y = "RMSE")+
+  scale_color_manual("", breaks = c("Train RMSE","Test RMSE"),
+                     values = c("red","blue"))
+```
+
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
