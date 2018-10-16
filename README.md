@@ -1,0 +1,2 @@
+# Predicting-Movie-Success-Data-Mining-
+This is a Data Mining project that predicts the success rate of a movie by taking the various parameters related to the movie into consideration. For instance the release year, production cost, the popularity of the director, popularity of the actor, etc. Also, we have made use of the Linear Regression Mathematical model of Machine Learning to plot the values and derive a graphical output. The input has been taken from Kaggle movie database.
